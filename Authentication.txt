@@ -1,0 +1,338 @@
+#########################################################################################################################################
+
+							AUTHENTICATION YOUR APP BEGINNING
+
+#########################################################################################################################################
+
+
+6 level of authentication.
+
+Level 1 - get user's id and password and save that in a database.
+-> password type text. // less / not secure way to store password 
+
+#########################################################################################################################################
+
+
+
+Level 2 - encrypting the password using mongoose-encryption.
+
+------------------------------------------><	TO ENCRYPT	><------------------------------------------------
+
+to do it install 'mongoose-encryption' package using npm
+then define a user schema, then add the package as a plugin as follows:
+userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] }); // Add the plugin before creating model in DB
+//secret is the key of a string.
+//encryptedFields is the field to which we want to encrypt in DB
+
+------------------------------------------><	TO DECRYPT	><------------------------------------------------
+
+when mongoose<model>.find() method is called it automatically decrypts the encrypted feild(s).
+
+
+#########################################################################################################################################
+
+
+
+Level 3 - Hashing the password.
+
+
+------------------------------------------><	TO ENCRYPT	><------------------------------------------------
+
+to do it install 'md5' package using npm
+to encrypt a required feild just use md5() method.
+ex: {	name: req.body.name,
+	password: md5(req.body.password)
+    } 
+   
+
+------------------------------------------><	TO DECRYPT	><------------------------------------------------
+
+take the password feild from the user and encrypt it by using md5() and store in a var.
+then compare that var with the value which is stored in the DB. if the user enter the correct password then the comparison will return true and we can respond to it accordingly.
+// we need to compare the entered password with the stored password because it is almost impossible to reverse(decrypt) the hash.
+
+
+#########################################################################################################################################
+
+
+
+Level 4 - Salting and Hashing the password.
+
+------------------------------------------><	TO ENCRYPT	><------------------------------------------------
+
+//since md5 is less secure than bcrypt, and one can create a 20B hashtable per sec. using high end GPU and can compare the hashtable's element with the password and may get access to our secured items. to overcome this we use bcrypt method of hashing.
+  
+to do it install 'bcrypt' package using npm
+
+firstly require bcrypt. then create a var named saltRounds holding an integer value in it 
+ex: const saltRounds = 10;
+
+then to encrypt a required feild just use bcrypt.hash( feild/text_req_to_hash, salt, callback() ) method.
+ex: bcrypt(req.body.password, saltRounds, function(err,hash){ 		// hash is the encrypted password
+	newUser = {	name: req.body.name,
+			password: hash
+    		    }
+	newUser.save();
+});
+
+
+------------------------------------------><	TO DECRYPT	><------------------------------------------------
+
+use bcrypt.compare(plainTextPassword, hash, callback() )method
+
+ex:
+   User.findOne({req.body.name},function(foundUser){	// here User is the mode/collection in our DB
+   bcrypt.compare(req.body.password, foundUser.password, function(err,result){ 
+		// here foundUser.password is targetting the password feild in the DB
+	
+	if(result === true){
+		console.log("successfully decrypted");
+	}
+});
+});
+
+
+#########################################################################################################################################
+
+
+Level 5 - using sessions and cookies
+
+firstly install passport passport-local passport-local-mongoose express-session using npm and require it in our app.js file 
+// no need to require passport-local
+
+
+use the installed package as follows:
+app.use(session(  ->// add this line of code above your mongoose connection.
+	{
+	secret: "some string which is used by hash function during hashing",
+	resave: false,
+	saveUninitialize: false
+	}
+)); // till here we have setup session
+
+//after setup next step is to initialize the passport.
+
+to initialize write :
+app.use(passport.initialize()); // just below where you setup the session, then
+app.use(passport.session()); // this is to tell our app to initialize the session
+
+// next thing is to setup passport-local-mongoose package
+// to setup passport-local-mongoose we need to first create a plugin to a schema.
+
+ex: const userSchema = new mongoose.Schema({
+  email: String,
+  password: String,
+});
+
+userSchema.plugin(passportLocalMongoose); // const passportLocalMongoose = require(passport-local-mongoose) 
+//After we create a plugin, lets use it
+just below where we create mongoose model/collection add this line of code:
+
+passport.use(User.createStrategy());  // local login strategy
+
+passport.serializeUser(User.serializeUser()); 
+passport.deserializeUser(User.deserializeUser());
+
+------------------------------------------><	TO ENCRYPT	><------------------------------------------------
+
+to register use <mongoose.model>register() method from passport-local-mongoose package.
+ex:
+  User.register({username:req.body.username}, req.body.password, function(err, user){
+    if (err) {
+      console.log(err);
+      res.redirect("/register");
+    } else {
+      passport.authenticate("local")(req,res,function(){
+        res.redirect("/secrets");  //->  "/secrets" is the rout where we want to redirect the user when the user is signedin.  
+      });
+    }
+
+  });
+
+// and to verify the authentication of the user we need to compare it in the secret route as follows:
+
+app.get("/secrets",function(req,res){
+  if(req.isAuthenticated()){  // isAuthenticated method checks if the user is authorized or not.
+    res.render("secrets.ejs");
+  }else {
+    res.redirect("/login");
+  }
+});
+
+------------------------------------------><	TO DECRYPT	><------------------------------------------------
+
+to decrypt use login(user,callback) method from passport package  // user is the req.user feilds entered by the client/user
+ex:
+const user = new User({
+    username: req.body.username,
+    password: req.body.password
+  });
+
+  req.login(user, function(err){
+    if (err) {
+      console.log(err);
+    } else {
+      passport.authenticate("local")(req,res, function(){
+        res.redirect("/secrets");
+      });
+    }
+  });
+
+//to deauthenticate or logout user use
+
+app.get("/logout", function(req,res){
+  req.logout();
+  res.redirect("/");
+});
+
+
+#########################################################################################################################################
+
+
+Level 6 : using OAuth or third party signin like google or facebook
+
+firstly install passport passport-local passport-local-mongoose express-session using npm and require it in our app.js file 
+// no need to require passport-local
+
+
+use the installed package as follows:
+app.use(session(  ->// add this line of code above your mongoose connection.
+	{
+	secret: "some string which is used by hash function during hashing",
+	resave: false,
+	saveUninitialize: false
+	}
+)); // till here we have setup session
+
+//after setup next step is to initialize the passport.
+
+to initialize write :
+app.use(passport.initialize()); // just below where you setup the session, then
+app.use(passport.session()); // this is to tell our app to initialize the session
+
+// next thing is to setup passport-local-mongoose package
+// to setup passport-local-mongoose we need to first create a plugin to a schema.
+
+ex: const userSchema = new mongoose.Schema({
+  email: String,
+  password: String,
+  googleId: String
+});
+
+userSchema.plugin(passportLocalMongoose); // const passportLocalMongoose = require(passport-local-mongoose) 
+//After we create a plugin, lets use it
+just below where we create mongoose model/collection add this line of code:
+
+passport.use(User.createStrategy()); 
+
+passport.serializeUser(function(user, done) {
+  done(null, user.id);
+});
+
+passport.deserializeUser(function(id, done) {
+	User.findById(id, function(err, user) {
+		done(err, user);
+	});
+});
+
+
+generate CLIENT_ID and CLIENT_SECRET from the google API  // store this in .env file
+
+to generate all of this this you need to enter OAuth valid URL i.e, the url to which an authorized user will be redirected
+
+install passport-google-oauth20 package using npm
+
+and create a new strategy like -> const GoogleStrategy = require("passport-google-oauth20").Strategy;
+
+// after generating the CLIENT_ID and CLIENT_SECRET from the google API its time to configure strategy
+
+to configure write : //below serialize and deserialize the passport
+
+passport.use(new GoogleStrategy({
+    clientID: GOOGLE_CLIENT_ID,
+    clientSecret: GOOGLE_CLIENT_SECRET,
+    callbackURL: "http://www.example.com/auth/google/callback"
+  },
+  function(accessToken, refreshToken, profile, cb) { // profile is JSON file with user's id,name,photos. imp is to save id in our DB
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {  // this is the point where googleId is saved in our DB
+      return cb(err, user);
+    });
+  }
+));
+
+//in order to save the google id in our DB add a feild in our schema like this:
+
+ex: const userSchema = new mongoose.Schema({
+  email: String,
+  password: String,
+  googleId: String
+});
+
+  // findOrCreate is not a mongodb function. to do this download mongoose-findOrCreate and require it(const findOrCreate = require		("mongoose-findOrCreate") ) and add the var as a plugin to user schema	 ex:	userSchema.plugin(findOrCreate)
+
+// next step is to Authenticate user, to do so add this:
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile'] }));
+
+app.get('/auth/google/callback', 
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/');
+  });
+
+//after this you will able to register through google.
+
+//on this stage you will get an err about serialize and deserialize the passport because till now we have use only local authentication to serialize and deserialize. To resolve this err just change the local authentication method to serialize and deserialize to another method from passport which will authenticate any kind of user.
+
+replace -> 	passport.serializeUser(User.serializeUser()); 
+		passport.deserializeUser(User.deserializeUser());
+
+with ->		passport.serializeUser(function(user, done) {
+  			done(null, user.id);
+		});
+
+		passport.deserializeUser(function(id, done) {
+		  User.findById(id, function(err, user) {
+		    done(err, user);
+		  });
+		});
+
+
+
+#########################################################################################################################################
+
+To know more go to docs of packages.
+
+https://www.npmjs.com/package/mongoose-encryption
+https://www.npmjs.com/package/md5
+https://www.npmjs.com/package/bcrypt
+https://www.npmjs.com/package/passport
+https://www.npmjs.com/package/passport-local
+https://www.npmjs.com/package/passport-local-mongoose
+https://www.npmjs.com/package/express-session
+
+http://www.passportjs.org/packages/
+
+-> .env file to keep secrets	https://www.npmjs.com/package/dotenv
+
+create .env file :
+
+As early as possible in your application, require and configure dotenv.
+
+require('dotenv').config()
+Create a .env file in the root directory of your project. Add environment-specific variables on new lines in the form of NAME=VALUE. 
+For example:
+
+CLIENT_ID=dsjfhsdiojkvdg bzhsc bdav sdcbv
+CLIENT_SECRET=nrfvgjregrDPOKqxc uvb
+
+to get the values write: process.env.CLIENT_ID. which will return the value with the variable CLIENT_ID in .env file (dsjfhsdiojkvdg bzhsc bdav sdcbv)
+
+
+
+#########################################################################################################################################
+
+							AUTHENTICATION YOUR APP COMPLETED
+
+#########################################################################################################################################
